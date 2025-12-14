@@ -1,193 +1,175 @@
-import pandas as pd
 import streamlit as st
-import altair as alt # Import Altair for advanced charting
+import pandas as pd
+import altair as alt
+import os
 
-# --- IMPORT MODULES ---
-from modules.data_loader import load_earthquake_data
-from modules.config import DISPLAY_COLS, COLUMN_LEGEND 
+# --- Global Configuration ---
+st.set_page_config(
+    page_title="OWID Inequality & Poverty Explorer",
+    layout="wide" 
+)
 
-# --- 1. PAGE FUNCTIONS (These remain mostly the same, just cleaner imports) ---
+# --- 1. Define Local Data Path ---
+# Using the relative path for better portability and robustness
+LOCAL_DATA_PATH = 'data/pov_dataset.csv' 
 
-def show_dashboard(df_earthquakes, max_mag):
-    """Shows the main map dashboard and filtering interface."""
-    st.title("Global Earthquake Activity (Last 24 Hours)")
 
-    st.markdown(
-    """
-    This dashboard displays all recorded **global earthquake events** from the past 24 hours. \\
-    You can use the sidebar navigation to switch to the **More Context** view for in-depth analysis and charting.
-    """
-    )
+# --- 2. Data Loading and Caching ---
+@st.cache_data
+def load_local_data(file_path):
+    """Loads the full OWID poverty dataset from a local CSV file and renames key columns."""
     
-    # Metrics and Refresh Button Layout
-    col_refresh, col_count, col_time = st.columns([1, 2, 3])
-
-    with col_refresh:
-        # Simplified refresh logic: just rerun to fetch new data based on 60s cache TTL
-        if st.button("Refresh Data", help="Fetch the latest data from the USGS API (bypassing the 60s cache)."):
-            st.rerun() # Will reuse cache if still valid (less than 60s)
-
-    with col_count:
-        st.info(f"Total Records Processed: **{len(df_earthquakes)}**")
-
-    with col_time:
-        st.markdown(f"**Last Data Query Time:** `{pd.Timestamp.now().strftime('%d.%m.%Y, %H:%M:%S')}`")
-
-    st.subheader("Earthquake Hotspots")
-    
-    # Map Visualization
-    st.map(
-        df_earthquakes,
-        latitude='lat',
-        longitude='lon',
-        size='map_size',
-        color='#CC0000'
-    )
-
-    # Summary Metrics Row
-    st.subheader("Summary Statistics")
-    col_metric_1, col_metric_2, col_metric_3, col_metric_4 = st.columns(4)
-
-    # Simplified metric calculations
-    max_felt = df_earthquakes['felt'].max() if 'felt' in df_earthquakes.columns else 0
-    avg_depth = df_earthquakes['depth'].mean() if 'depth' in df_earthquakes.columns else 0
-    
-    col_metric_1.metric("Tsunami Alert Events", df_earthquakes['tsunami'].sum())
-    col_metric_2.metric("Max Felt Reports", int(max_felt if pd.notna(max_felt) else 0))
-    col_metric_3.metric("Max Magnitude Event", f"{max_mag:.1f}")
-    col_metric_4.metric("Avg. Depth (km)", f"{avg_depth:.2f}")
-
-    st.markdown("---")
-    
-    # Interactive filtering mechanism
-    min_mag_filter = st.slider(
-        "Show Earthquakes Stronger Than",
-        min_value=0.0,
-        max_value=float(max_mag if max_mag > 0 else 5.0),
-        value=0.0,
-        step=0.1
-    )
-    
-    # Applying the filter logic
-    filtered_df = df_earthquakes[df_earthquakes['magnitude'] >= min_mag_filter]
-    
-    # Metric showing filtered count
-    st.metric(label="Earthquakes Matching Filter", value=f"{len(filtered_df):,}")
-
-    st.subheader("Filtered Earthquake Data Table")
-    # Using LaTeX for mathematical notation
-    st.text(f"Showing results with magnitude $\\ge$ {min_mag_filter}") 
-    # Display the filtered dataset
-    st.dataframe(
-        filtered_df[DISPLAY_COLS],
-        use_container_width=True,
-        hide_index=True
-    )
-
-    # UX: Legend in an Expander, displayed as a clean st.table
-    with st.expander("Column Definitions"):
-        st.write("This legend explains the columns displayed in the earthquake data table:")
+    if not os.path.exists(file_path):
+        st.error(f"Error: Local file not found at {file_path}")
+        return pd.DataFrame() 
         
-        legend_data = []
-        for col in DISPLAY_COLS:
-            legend_data.append({
-                "Column Name": col,
-                "Description": COLUMN_LEGEND.get(col, "No description available.")
-            })
+    try:
+        df_full = pd.read_csv(file_path)
         
-        legend_df = pd.DataFrame(legend_data)
-        st.table(legend_df.set_index('Column Name'))
+        # Rename essential columns based on the structure of the PIP dataset
+        df_full.rename(columns={
+            'country': 'Country',
+            'year': 'Year',
+            'gini': 'Gini_Coefficient',
+            'headcount_ratio_international_povline': 'Poverty_Rate_2_15_Dollar'
+        }, inplace=True)
+        
+        return df_full
+        
+    except Exception as e:
+        st.error(f"An unexpected error occurred during data loading: {e}")
+        return pd.DataFrame() 
+
+# Loading the full dataset
+df_poverty_data = load_local_data(LOCAL_DATA_PATH)
+
+# Check if data loading was successful
+if df_poverty_data.empty:
+    st.stop() # Stop the app if data is not loaded
+
+# --- 3. Sidebar Filters for Data Granularity (CORRECTED) ---
+
+st.sidebar.header("Data Granularity Filters")
+
+# Create list of unique values for selectboxes
+reporting_options = df_poverty_data['reporting_level'].unique().tolist()
+welfare_options = df_poverty_data['welfare_type'].unique().tolist()
+
+# Selectbox for Reporting Level (Default: 'national')
+selected_reporting = st.sidebar.selectbox(
+    "Select Reporting Level:",
+    options=reporting_options,
+    index=reporting_options.index('national') if 'national' in reporting_options else 0 
+)
+
+# NEU: Multiselect für Welfare Type
+# Voreingestellt sind nun beide gängigen Optionen, falls vorhanden.
+default_welfare = [w for w in ['consumption', 'income'] if w in welfare_options]
+
+selected_welfare = st.sidebar.multiselect(
+    "Select Welfare Type:",
+    options=welfare_options,
+    default=default_welfare
+)
+
+# Apply primary filtering to the raw data
+# Die Filter-Logik muss nun .isin() verwenden, da selected_welfare eine Liste ist
+df_filtered = df_poverty_data[
+    (df_poverty_data['reporting_level'] == selected_reporting) & 
+    (df_poverty_data['welfare_type'].isin(selected_welfare)) # HIER IST DIE KORREKTUR
+].copy() 
+
+# Remove rows where the Gini coefficient is NaN after filtering (cleaner visualization)
+df_filtered.dropna(subset=['Gini_Coefficient'], inplace=True)
 
 
-def show_deep_dive_analysis(df_earthquakes):
-    """Shows in-depth statistical and hazard analysis charts."""
-    # Updated Main Title
-    st.title("Understanding Patterns and Hazards")
+# --- 4. Main Content and Visualisation ---
+
+st.title("📊 Global Inequality & Poverty Trends")
+st.markdown(f"""
+    The current view displays data based on **Reporting Level: {selected_reporting}** and 
+    **Welfare Type: {selected_welfare}**. Use the sidebar to change the granularity.
+""")
+
+# --- A. Time Series Visualization (Trend) ---
+
+st.subheader("1. Inequality Trend (Gini Coefficient) by Country")
+
+country_list = df_filtered['Country'].unique().tolist()
+
+if not country_list:
+    st.warning("No data available for the selected granularity filters.")
+else:
+    # Information about available countries
+    st.info(f"The analysis uses data for **{len(country_list)}** available countries based on the current filters.")
     
-    st.info("""
-    **Magnitude** quantifies earthquake strength (seismic energy release). It's a logarithmic scale where each whole number up means $\\approx30\\times$ more energy. 
-    - **1.0 Mag:** Very minor; often only recorded by instruments.
-    - **4.0 Mag:** Light; felt by many, causes rattling, little to no damage.
-    - **7.0 Mag:** Major; serious, widespread destruction.
-    """)
+    # 1. Alphabetical sorting for better visibility in the dropdown
+    country_list.sort() 
     
-    if df_earthquakes.empty:
-        st.warning("No data available for analysis.")
-        return
+    # 2. Improved logic for default selection
+    DEFAULT_COUNTRIES = ['Germany', 'United States', 'Brazil']
+    default_selection = [c for c in DEFAULT_COUNTRIES if c in country_list]
+    if not default_selection:
+        default_selection = country_list[:3] 
 
-    # --- Magnitude Distribution Histogram ---
-    st.subheader("1. Counting the Quakes: By Magnitude")
-    st.markdown("This chart shows how many earthquakes occurred at each strength level (magnitude).")
-    
-    mag_hist = alt.Chart(df_earthquakes).mark_bar().encode(
-        alt.X("magnitude", bin=alt.Bin(step=0.2), title="Magnitude (Binned)"),
-        alt.Y("count()", title="Number of Earthquakes"),
-        tooltip=[
-            alt.Tooltip("magnitude", bin=alt.Bin(step=0.2), title="Magnitude Range"),
-            "count()"
-        ]
-    ).properties(
-        width='container'
-    )
-    st.altair_chart(mag_hist, use_container_width=True)
-
-    st.markdown("---")
-
-    # --- Top Country/Region Breakdown ---
-    st.subheader("2. Top Regions")
-    st.markdown("A look at the top 10 countries or regions that reported the most earthquake activity.")
-
-    country_counts = df_earthquakes['country'].value_counts().reset_index()
-    country_counts.columns = ['country', 'count']
-    country_counts = country_counts.head(10) # Top 10
-
-    country_bar = alt.Chart(country_counts).mark_bar().encode(
-        alt.X('count', title="Number of Earthquakes"),
-        alt.Y('country', sort='-x', title="Country/Region"),
-        tooltip=['country', 'count']
-    ).properties(
-        width='container'
-    )
-    st.altair_chart(country_bar, use_container_width=True)
-
-    st.markdown("---")
-    
-    # --- Earthquake Depth Analysis ---
-    st.subheader("3. Impact Risk: Magnitude vs. Depth")
-    st.markdown("Shallow quakes are the most destructive. Depth is the key factor in surface impact.")
-
-    depth_scale = alt.Scale(
-        domain=[0, 70, 700],
-        range=['red', 'yellow', 'blue'],
-        type='linear'
+    selected_countries = st.multiselect(
+        "Choose one or more Countries for Time Series Analysis:",
+        options=country_list,
+        default=default_selection
     )
 
-    depth_scatter = alt.Chart(df_earthquakes).mark_circle(size=60).encode(
-        alt.X('magnitude', title="Magnitude"),
-        alt.Y('depth', title="Depth Below Surface (km)", scale=alt.Scale(reverse=True)),
-        tooltip=['magnitude', alt.Tooltip('depth', title='Depth (km)'), 'country', 'region'],
-        color=alt.Color('depth', scale=depth_scale, title="Depth (km)")
-    ).interactive(bind_x=False, bind_y=False).properties( 
-        width='container'
-    )
-    st.altair_chart(depth_scatter, use_container_width=True)
+    if selected_countries:
+        df_chart = df_filtered[df_filtered['Country'].isin(selected_countries)]
+        
+        # Altair chart creation
+        chart = alt.Chart(df_chart).mark_line(point=True).encode(
+            x=alt.X('Year:O', title='Year'),
+            y=alt.Y('Gini_Coefficient:Q', title='Gini Coefficient (0=Perfect Equality)'),
+            color='Country:N', 
+            tooltip=['Country', 'Year', 'Gini_Coefficient']
+        ).properties(
+            title="Gini Coefficient Trend Over Time"
+        ).interactive() 
+        
+        st.altair_chart(chart, use_container_width=True)
+        
+        
+        with st.expander("Show list of all available countries"):
+            st.write(", ".join(country_list))
 
 
-# --- 4. MAIN APP LOGIC ---
+# --- B. Ranking Visualization (Comparison) ---
 
-# Configure page settings
-st.set_page_config(layout="wide", page_title="Earthquake Live Dashboard")
+st.subheader("2. Latest Gini Coefficient Ranking")
 
-# Load data once using the function from the data_loader module
-df_earthquakes = load_earthquake_data()
-max_mag = df_earthquakes['magnitude'].max() if not df_earthquakes.empty else 0.0
+# Find the latest available year for each country in the filtered data
+df_latest = df_filtered.loc[df_filtered.groupby('Country')['Year'].idxmax()]
 
-# Sidebar Navigation
-st.sidebar.title("Navigation")
-page = st.sidebar.radio("Select View", ["Dashboard & Map", "More Context"])
+# Sort by Gini Coefficient (Highest Gini means highest inequality -> top of the chart)
+df_latest_sorted = df_latest.sort_values(by='Gini_Coefficient', ascending=False)
 
-# Route based on navigation choice
-if page == "Dashboard & Map":
-    show_dashboard(df_earthquakes, max_mag)
-elif page == "More Context":
-    show_deep_dive_analysis(df_earthquakes)
+# Allow the user to select the top N countries
+top_n = st.slider("Show Top/Bottom Countries in Ranking:", min_value=5, max_value=len(df_latest_sorted), value=20)
+df_rank_display = pd.concat([df_latest_sorted.head(top_n // 2), df_latest_sorted.tail(top_n // 2)])
+df_rank_display = df_rank_display.sort_values(by='Gini_Coefficient', ascending=False)
+
+# Bar chart creation
+rank_chart = alt.Chart(df_rank_display).mark_bar().encode(
+    x=alt.X('Gini_Coefficient:Q', title='Gini Coefficient (Latest Year)'),
+    # Use Country as Y axis, and sort it by the Gini value
+    y=alt.Y('Country:N', sort=alt.EncodingSortField(field="Gini_Coefficient", op="mean", order='descending')),
+    # Color the bars based on the Gini value
+    color=alt.Color('Gini_Coefficient:Q', scale=alt.Scale(range='heatmap'), legend=None),
+    tooltip=['Country', 'Year', 'Gini_Coefficient']
+).properties(
+    title=f"Inequality Ranking (Top/Bottom {top_n} Countries, Latest Data)"
+).interactive()
+
+st.altair_chart(rank_chart, use_container_width=True)
+
+
+# --- 5. Raw Data Preview (Optional, in Expander) --- 
+
+with st.expander("Show Filtered Raw Data (First 100 Rows)"):
+    st.subheader("Filtered Data Preview")
+    st.dataframe(df_filtered.head(100), use_container_width=True)

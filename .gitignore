@@ -1,0 +1,12 @@
+# Python-Spezifisches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.owid_powerty_env
+owid_poverty_dash
+.DS_Store
+
+# Streamlit-Spezifisches (Caching und temporäre Dateien)
+.streamlit/
+/tmp/
