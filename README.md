@@ -16,14 +16,16 @@ The dashboard allows users to filter high-granularity data (different reporting 
 ### 1. Clone the Repository and Prepare the Environment
 ```bash
 # Clone the repository
-git clone [https://github.com/majimaken/owid-inequality.git](https://github.com/majimaken/owid-inequality.git)
+git clone https://github.com/majimaken/owid-inequality.git
 cd owid-inequality
 
-# Activate your local virtual environment
-# On Windows (using the name from the setup):
-.\owid_poverty_dash\Scripts\activate 
-# Or:
-.\venv_streamlit\Scripts\activate
+# --- 1. Create a new virtual environment ---
+# This command creates a new, isolated Python environment named '.venv'
+python3 -m venv .venv 
 
-# Ensure all necessary libraries are installed
+# --- 2. Activate the environment ---
+.\.venv\Scripts\Activate
+
+# --- 3. Install dependencies ---
+# Ensure all necessary libraries are installed inside the activated environment
 pip install -r requirements.txt
