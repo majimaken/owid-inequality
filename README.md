@@ -1,30 +1,29 @@
-# Seismic Watch: Streamlit Dashboard
+# 🌍 Global Inequality and Poverty Explorer (Streamlit App)
 
 ## Overview
-This repository hosts the Streamlit application for **Seismic Watch** and is designed for visualizing live earthquake data. 
+This repository hosts the Streamlit application **Global Inequality and Poverty Explorer**. The application is designed for interactive analysis and visualization of global poverty and inequality data, primarily sourced from the World Bank's Poverty and Inequality Platform (PIP) dataset.
 
-### Release Pipeline:
-- Interactive map with filtering and tooltips
-- New page with focus on region (user can select the top 10 active regions)
-- Information page
-- Information page with:
-Tsunami Events Map: If a tsunami event is present (tsunami: 1), filter the data and display a dedicated map for those high-risk events. Richter Scale Context: Use an expander to provide a clear, detailed table explaining the typical effects associated with different magnitude ranges (e.g., Mag 5.0-5.9 = Moderate, felt widely, minor damage). Depth Hazard Explanation: Use an image tag like `` to visually explain the difference between shallow (crustal) and deep (slab) earthquakes.
+The dashboard allows users to filter high-granularity data (different reporting levels and welfare types) and visualize trends over time.
 
-## Installation
+### Core Features:
+* **Interactive Sidebar Filters:** Granular filtering by `reporting_level` (e.g., national) and `welfare_type` (consumption vs. income) to clean and standardize the dataset view.
+* **Global Entry Point:** A Choropleth Map (World Map) visualizes the latest available **Gini Coefficient** as the primary visual anchor upon loading.
+* **Time Series Analysis:** Interactive line charts (Altair) to track the Gini Coefficient trend over time for selected countries.
+* **Ranking View:** A bar chart displays a clear ranking of countries based on the most recent Gini Coefficient value.
 
-### 1. Getting Started
+## Installation and Setup
+
+### 1. Clone the Repository and Prepare the Environment
 ```bash
-git clone [https://github.com/majimaken/seismic-watch.git](https://github.com/majimaken/seismic-watch.git)
-cd seismic-watch
+# Clone the repository
+git clone [https://github.com/majimaken/owid-inequality.git](https://github.com/majimaken/owid-inequality.git)
+cd owid-inequality
 
-# Activate your existing virtual environment (as seen in your command prompt)
-.\venv\Scripts\activate
+# Activate your local virtual environment
+# On Windows (using the name from the setup):
+.\owid_poverty_dash\Scripts\activate 
+# Or:
+.\venv_streamlit\Scripts\activate
 
-# Install necessary libraries
-pip install requirements.txt
-
-# Run app
-streamlit run app.py
-```
-
-The application will automatically open in your web browser, typically at http://localhost:8501.
+# Ensure all necessary libraries are installed
+pip install -r requirements.txt
